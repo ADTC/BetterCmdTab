@@ -111,6 +111,21 @@ struct SettingsPortabilityTests {
         #expect(Preferences.shared.sinkMinimizedWindows == true)
     }
 
+    @Test("windowTitleExclusions reloads from its key")
+    func windowTitleExclusionsReload() {
+        let defaults = UserDefaults.standard
+        let key = Preferences.Keys.windowTitleExclusions
+        let saved = defaults.object(forKey: key)
+        defer {
+            if let saved { defaults.set(saved, forKey: key) } else { defaults.removeObject(forKey: key) }
+            Preferences.shared.reloadFromDefaults()
+        }
+
+        defaults.set(["com.example.a": ["Inspector"]], forKey: key)
+        Preferences.shared.reloadFromDefaults()
+        #expect(Preferences.shared.windowTitleExclusions == ["com.example.a": ["Inspector"]])
+    }
+
     /// The grid reads this through `EffectiveSettings` on every reveal, so a
     /// missing `reloadFromDefaults()` line would leave an imported "off" invisible
     /// until the next launch. Default-true reproduces the shipped behavior, which

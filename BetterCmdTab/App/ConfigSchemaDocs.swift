@@ -356,6 +356,9 @@ enum ConfigSchemaDocs {
         "pinnedBundleIDs": ConfigSettingDoc(
             "array", "Bundle IDs pinned to the front of the switcher, in the order they appear.",
             item: ConfigItemSchema("string", pattern: bundleIDPattern)),
+        "windowTitleExclusions": ConfigSettingDoc(
+            "object",
+            "Per-app window title fragments, keyed by bundle ID. A window whose title contains any fragment (case- and accent-insensitive) is left out of the switcher; the app's other windows stay."),
         "hideAllExcludedBundleIDs": ConfigSettingDoc(
             "array", "Bundle IDs the \"hide all windows\" shortcut leaves visible.",
             item: ConfigItemSchema("string", pattern: bundleIDPattern)),

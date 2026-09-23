@@ -865,6 +865,7 @@ final class Preferences: ObservableObject {
         static let gridMaxColumns = "Switcher.gridMaxColumns"
         static let gridSingleRow = "Switcher.gridSingleRow"
         static let appExceptions = "Switcher.appExceptions"
+        static let windowTitleExclusions = "Switcher.windowTitleExclusions"
         /// Pre-Exceptions key: a plain bundle-ID array of always-hidden apps.
         /// Read once at launch and folded into `appExceptions` (hide = .always).
         static let legacyExcludedBundleIDs = "Switcher.excludedBundleIDs"
@@ -1151,6 +1152,15 @@ final class Preferences: ObservableObject {
     /// exception. Used to decide whether to let the trigger chord pass through.
     func ignoreMode(for bundleID: String) -> IgnoreShortcutsMode {
         appExceptions.first { $0.bundleID == bundleID }?.ignore ?? .never
+    }
+
+    /// Kept apart from `appExceptions`: older builds cast that key to
+    /// `[[String: String]]` and would reset every rule on a nested array.
+    @Published var windowTitleExclusions: [String: [String]] {
+        didSet {
+            guard oldValue != windowTitleExclusions else { return }
+            UserDefaults.standard.set(windowTitleExclusions, forKey: Keys.windowTitleExclusions)
+        }
     }
 
     /// Bundle identifiers forced to the front of the switcher. Order is the
@@ -2378,6 +2388,7 @@ final class Preferences: ObservableObject {
             self.appExceptions = initial
             defaults.set(initial.map(\.dictionary), forKey: Keys.appExceptions)
         }
+        self.windowTitleExclusions = defaults.dictionary(forKey: Keys.windowTitleExclusions) as? [String: [String]] ?? [:]
         self.pinnedBundleIDs = defaults.stringArray(forKey: Keys.pinnedBundleIDs) ?? []
         self.hideAllExcludedBundleIDs = defaults.stringArray(forKey: Keys.hideAllExcludedBundleIDs) ?? []
         self.showMinimizedWindows = defaults.object(forKey: Keys.showMinimizedWindows) as? Bool ?? true
@@ -2528,6 +2539,7 @@ final class Preferences: ObservableObject {
         } else {
             appExceptions = []
         }
+        windowTitleExclusions = defaults.dictionary(forKey: Keys.windowTitleExclusions) as? [String: [String]] ?? [:]
         pinnedBundleIDs = defaults.stringArray(forKey: Keys.pinnedBundleIDs) ?? []
         hideAllExcludedBundleIDs = defaults.stringArray(forKey: Keys.hideAllExcludedBundleIDs) ?? []
 

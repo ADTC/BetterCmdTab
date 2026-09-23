@@ -994,6 +994,10 @@
     "windowDrillEnabled" : {
       "description" : "Peek the highlighted app's windows with ↓ while \"applications only\" is on.",
       "type" : "boolean"
+    },
+    "windowTitleExclusions" : {
+      "description" : "Per-app window title fragments, keyed by bundle ID. A window whose title contains any fragment (case- and accent-insensitive) is left out of the switcher; the app's other windows stay.",
+      "type" : "object"
     }
   },
   "title" : "BetterCmdTab configuration",
