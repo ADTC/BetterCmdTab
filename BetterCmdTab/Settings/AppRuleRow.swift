@@ -1,8 +1,5 @@
 import AppKit
 
-/// One app's rules as a compact, single-line card row: app icon, name, and both
-/// controls always visible — "Show" (when it appears in the switcher) and
-/// "⌘Tab" (whether the app keeps the trigger for itself) — plus a remove button.
 /// No disclosure: everything is on screen at once. Owned by
 /// `AppsSettingsViewController`, laid out inside a `SettingsSectionView` card.
 @MainActor
@@ -10,7 +7,7 @@ final class AppRuleRowView: NSView {
 
     let bundleID: String
 
-    /// Fired after either popup changes, with the row's new modes.
+    /// Fired after any control changes, with the row's new modes and title fragments.
     var onChange: ((HideWindowsMode, IgnoreShortcutsMode, [String]) -> Void)?
     /// Fired when the remove button is clicked.
     var onRemove: (() -> Void)?
@@ -193,7 +190,7 @@ final class AppRuleRowView: NSView {
         } else {
             raw = titleTokens.stringValue.components(separatedBy: titleTokens.tokenizingCharacterSet)
         }
-        windowTitleContains = AppException.cleanedTitleFragments(raw)
+        windowTitleContains = CatalogFilter.cleanedTitleFragments(raw)
         titleTokens.objectValue = windowTitleContains
         notifyChange()
     }

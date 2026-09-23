@@ -744,64 +744,31 @@ enum IgnoreShortcutsMode: String, CaseIterable, Sendable {
 
 /// A per-app entry in the switcher's Exceptions list, identified by bundle ID.
 /// Carries the hide-windows and ignore-shortcuts overrides shown in the
-/// Exceptions editor. Persisted as a property-list dictionary so both the
+/// Exceptions editor. Persisted as a `[String: String]` dictionary so both the
 /// main-actor `Preferences` and the off-main `CatalogFilter` can read it.
 struct AppException: Equatable, Sendable {
     var bundleID: String
     var hide: HideWindowsMode
     var ignore: IgnoreShortcutsMode
-    /// Case-insensitive fragments. A window whose title contains any fragment
-    /// is omitted while other windows from the same app remain available.
-    var windowTitleContains: [String]
 
-    init(
-        bundleID: String,
-        hide: HideWindowsMode = .dontHide,
-        ignore: IgnoreShortcutsMode = .never,
-        windowTitleContains: [String] = []
-    ) {
+    init(bundleID: String, hide: HideWindowsMode = .dontHide, ignore: IgnoreShortcutsMode = .never) {
         self.bundleID = bundleID
         self.hide = hide
         self.ignore = ignore
-        self.windowTitleContains = Self.cleanedTitleFragments(windowTitleContains)
     }
 
     /// Plist-friendly representation for UserDefaults.
-    var dictionary: [String: Any] {
-        var result: [String: Any] = [
-            "bundleID": bundleID,
-            "hide": hide.rawValue,
-            "ignore": ignore.rawValue,
-        ]
-        if !windowTitleContains.isEmpty {
-            result["windowTitleContains"] = windowTitleContains
-        }
-        return result
+    var dictionary: [String: String] {
+        ["bundleID": bundleID, "hide": hide.rawValue, "ignore": ignore.rawValue]
     }
 
     /// Parse one stored dictionary. Missing/unknown modes fall back to the
     /// neutral default so a half-written entry never silently drops the app.
-    init?(dictionary: [String: Any]) {
-        guard let bid = dictionary["bundleID"] as? String, !bid.isEmpty else { return nil }
+    init?(dictionary: [String: String]) {
+        guard let bid = dictionary["bundleID"], !bid.isEmpty else { return nil }
         self.bundleID = bid
-        self.hide = (dictionary["hide"] as? String).flatMap(HideWindowsMode.init) ?? .dontHide
-        self.ignore = (dictionary["ignore"] as? String).flatMap(IgnoreShortcutsMode.init) ?? .never
-        self.windowTitleContains = Self.cleanedTitleFragments(dictionary["windowTitleContains"] as? [String] ?? [])
-    }
-
-    /// Trim, discard empty fragments, and deduplicate case-insensitively while
-    /// preserving the user's order for settings/config round-trips.
-    static func cleanedTitleFragments(_ fragments: [String]) -> [String] {
-        var seen = Set<String>()
-        var result: [String] = []
-        result.reserveCapacity(fragments.count)
-        for fragment in fragments {
-            let trimmed = fragment.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            let key = trimmed.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
-            if seen.insert(key).inserted { result.append(trimmed) }
-        }
-        return result
+        self.hide = dictionary["hide"].flatMap(HideWindowsMode.init) ?? .dontHide
+        self.ignore = dictionary["ignore"].flatMap(IgnoreShortcutsMode.init) ?? .never
     }
 }
 
@@ -898,6 +865,7 @@ final class Preferences: ObservableObject {
         static let gridMaxColumns = "Switcher.gridMaxColumns"
         static let gridSingleRow = "Switcher.gridSingleRow"
         static let appExceptions = "Switcher.appExceptions"
+        static let windowTitleExclusions = "Switcher.windowTitleExclusions"
         /// Pre-Exceptions key: a plain bundle-ID array of always-hidden apps.
         /// Read once at launch and folded into `appExceptions` (hide = .always).
         static let legacyExcludedBundleIDs = "Switcher.excludedBundleIDs"
@@ -1184,6 +1152,15 @@ final class Preferences: ObservableObject {
     /// exception. Used to decide whether to let the trigger chord pass through.
     func ignoreMode(for bundleID: String) -> IgnoreShortcutsMode {
         appExceptions.first { $0.bundleID == bundleID }?.ignore ?? .never
+    }
+
+    /// Kept apart from `appExceptions`: older builds cast that key to
+    /// `[[String: String]]` and would reset every rule on a nested array.
+    @Published var windowTitleExclusions: [String: [String]] {
+        didSet {
+            guard oldValue != windowTitleExclusions else { return }
+            UserDefaults.standard.set(windowTitleExclusions, forKey: Keys.windowTitleExclusions)
+        }
     }
 
     /// Bundle identifiers forced to the front of the switcher. Order is the
@@ -2400,7 +2377,7 @@ final class Preferences: ObservableObject {
         // entries, and seed Finder to "show only with open windows". Persisted
         // immediately because `CatalogFilter` reads the new key from UserDefaults
         // off-main and never sees the legacy key.
-        if let stored = defaults.array(forKey: Keys.appExceptions) as? [[String: Any]] {
+        if let stored = defaults.array(forKey: Keys.appExceptions) as? [[String: String]] {
             self.appExceptions = stored.compactMap(AppException.init(dictionary:))
         } else {
             var initial = (defaults.stringArray(forKey: Keys.legacyExcludedBundleIDs) ?? [])
@@ -2411,6 +2388,7 @@ final class Preferences: ObservableObject {
             self.appExceptions = initial
             defaults.set(initial.map(\.dictionary), forKey: Keys.appExceptions)
         }
+        self.windowTitleExclusions = defaults.dictionary(forKey: Keys.windowTitleExclusions) as? [String: [String]] ?? [:]
         self.pinnedBundleIDs = defaults.stringArray(forKey: Keys.pinnedBundleIDs) ?? []
         self.hideAllExcludedBundleIDs = defaults.stringArray(forKey: Keys.hideAllExcludedBundleIDs) ?? []
         self.showMinimizedWindows = defaults.object(forKey: Keys.showMinimizedWindows) as? Bool ?? true
@@ -2556,11 +2534,12 @@ final class Preferences: ObservableObject {
         gridMaxColumns = defaults.object(forKey: Keys.gridMaxColumns) as? Int ?? 0
         gridSingleRow = defaults.object(forKey: Keys.gridSingleRow) as? Bool ?? true
 
-        if let stored = defaults.array(forKey: Keys.appExceptions) as? [[String: Any]] {
+        if let stored = defaults.array(forKey: Keys.appExceptions) as? [[String: String]] {
             appExceptions = stored.compactMap(AppException.init(dictionary:))
         } else {
             appExceptions = []
         }
+        windowTitleExclusions = defaults.dictionary(forKey: Keys.windowTitleExclusions) as? [String: [String]] ?? [:]
         pinnedBundleIDs = defaults.stringArray(forKey: Keys.pinnedBundleIDs) ?? []
         hideAllExcludedBundleIDs = defaults.stringArray(forKey: Keys.hideAllExcludedBundleIDs) ?? []
 

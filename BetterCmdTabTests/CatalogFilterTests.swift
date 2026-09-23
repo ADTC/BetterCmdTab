@@ -104,6 +104,29 @@ struct CatalogFilterTests {
         #expect(filtered[0].window == nil)
     }
 
+    @Test("an app whose every window is excluded keeps one windowless row")
+    func windowTitleExclusionsKeepTheApp() throws {
+        let finder = try #require(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first)
+        let pip = SwitcherRow(app: finder, window: AXUIElementCreateSystemWide(), windowTitle: "Picture-in-Picture", isMinimized: false)
+        let filtered = CatalogFilter.filterExcludedWindowTitles([pip, pip], ["com.apple.finder": ["picture-in-picture"]])
+        #expect(filtered.count == 1)
+        #expect(filtered[0].window == nil)
+        #expect(filtered[0].pid == finder.processIdentifier)
+    }
+
+    @Test("config() reads title exclusions from their own key, cleaned and folded")
+    func windowTitleExclusionsConfig() {
+        let defaults = UserDefaults.standard
+        let key = Preferences.Keys.windowTitleExclusions
+        let saved = defaults.object(forKey: key)
+        defer {
+            if let saved { defaults.set(saved, forKey: key) } else { defaults.removeObject(forKey: key) }
+        }
+
+        defaults.set(["com.example.a": [" R\u{E9}sum\u{E9} ", "resume", ""], "com.example.b": ["  "]], forKey: key)
+        #expect(CatalogFilter.config().excludedTitleFragments == ["com.example.a": ["resume"]])
+    }
+
     @Test("placeholders are always kept, even when hidden")
     func placeholderKept() {
         let cfg = config(hideModes: ["com.x": .always], showMinimized: false, showHidden: false)

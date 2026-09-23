@@ -11,6 +11,7 @@ final class AppsSettingsViewController: SettingsTabViewController {
 
     /// Working copy, persisted to `Preferences` on every mutation.
     private var exceptions: [AppException] = Preferences.shared.appExceptions
+    private var titleExclusions: [String: [String]] = Preferences.shared.windowTitleExclusions
 
     /// Short, plain-language popup titles (kept compact for inline rows; the
     /// row summary spells the choice out in full).
@@ -171,7 +172,7 @@ final class AppsSettingsViewController: SettingsTabViewController {
             icon: placeholderIcon,
             hide: exception.hide,
             ignore: exception.ignore,
-            windowTitleContains: exception.windowTitleContains,
+            windowTitleContains: titleExclusions[exception.bundleID] ?? [],
             showOptions: showOptions,
             shortcutOptions: shortcutOptions
         )
@@ -205,18 +206,20 @@ final class AppsSettingsViewController: SettingsTabViewController {
         guard let idx = exceptions.firstIndex(where: { $0.bundleID == bundleID }) else { return }
         exceptions[idx].hide = hide
         exceptions[idx].ignore = ignore
-        exceptions[idx].windowTitleContains = AppException.cleanedTitleFragments(windowTitleContains)
+        titleExclusions[bundleID] = windowTitleContains.isEmpty ? nil : windowTitleContains
         persist()
     }
 
     private func removeRule(bundleID: String) {
         exceptions.removeAll { $0.bundleID == bundleID }
+        titleExclusions[bundleID] = nil
         persist()
         rebuildRulesCard()
     }
 
     private func persist() {
         Preferences.shared.appExceptions = exceptions
+        Preferences.shared.windowTitleExclusions = titleExclusions
     }
 
     private func presentAddPicker() {
@@ -246,12 +249,14 @@ final class AppsSettingsViewController: SettingsTabViewController {
     override func viewWillAppear() {
         super.viewWillAppear()
         // Re-sync the working copy: another pane (e.g. Import settings) can rewrite
-        // appExceptions while this cached controller is off screen. Without this,
+        // both rule keys while this cached controller is off screen. Without this,
         // the next add/edit/remove would persist this stale snapshot and silently
         // clobber the imported rules.
         let current = Preferences.shared.appExceptions
-        if current != exceptions {
+        let currentTitles = Preferences.shared.windowTitleExclusions
+        if current != exceptions || currentTitles != titleExclusions {
             exceptions = current
+            titleExclusions = currentTitles
             rebuildRulesCard()
         }
         // Same stale-snapshot guard for the pin order (Import / other panes).

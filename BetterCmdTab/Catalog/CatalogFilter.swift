@@ -38,23 +38,26 @@ enum CatalogFilter {
 
         /// No filtering and no reordering — lets callers skip work entirely.
         var isIdentity: Bool {
-            hideModes.isEmpty && excludedTitleFragments.isEmpty && pinned.isEmpty && showMinimized && showHidden && showWindowless && spaceScope == .allSpaces && sortOrder == .mru
+            hideModes.isEmpty && pinned.isEmpty && showMinimized && showHidden && showWindowless && spaceScope == .allSpaces && sortOrder == .mru
         }
     }
 
     nonisolated static func config() -> Config {
         let defaults = UserDefaults.standard
         var hideModes: [String: HideWindowsMode] = [:]
-        var excludedTitleFragments: [String: [String]] = [:]
-        if let raw = defaults.array(forKey: Preferences.Keys.appExceptions) as? [[String: Any]] {
+        if let raw = defaults.array(forKey: Preferences.Keys.appExceptions) as? [[String: String]] {
             for entry in raw {
-                guard let bid = entry["bundleID"] as? String, !bid.isEmpty else { continue }
-                let mode = (entry["hide"] as? String).flatMap(HideWindowsMode.init) ?? .dontHide
+                guard let bid = entry["bundleID"], !bid.isEmpty else { continue }
+                let mode = entry["hide"].flatMap(HideWindowsMode.init) ?? .dontHide
                 if mode != .dontHide { hideModes[bid] = mode }
-                let fragments = AppException.cleanedTitleFragments(entry["windowTitleContains"] as? [String] ?? [])
-                    .map { $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) }
-                if !fragments.isEmpty { excludedTitleFragments[bid] = fragments }
             }
+        }
+        var excludedTitleFragments: [String: [String]] = [:]
+        let rawExclusions = defaults.dictionary(forKey: Preferences.Keys.windowTitleExclusions) as? [String: [String]] ?? [:]
+        for (bid, fragments) in rawExclusions {
+            let folded = cleanedTitleFragments(fragments)
+                .map { $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) }
+            if !folded.isEmpty { excludedTitleFragments[bid] = folded }
         }
         let sortRaw = defaults.string(forKey: Preferences.Keys.sortOrder)
         return Config(
@@ -153,21 +156,54 @@ enum CatalogFilter {
 
     /// Apply app-scoped, case/diacritic-insensitive title exclusions. The
     /// dictionary is empty for users without rules, so the common path returns
-    /// the original array without inspecting or folding any title.
+    /// the original array without inspecting or folding any title. An app whose
+    /// every window matches keeps one windowless row, as if it had no windows.
     static func filterExcludedWindowTitles(
         _ rows: [SwitcherRow],
         _ fragmentsByBundleID: [String: [String]]
     ) -> [SwitcherRow] {
         guard !fragmentsByBundleID.isEmpty else { return rows }
-        return rows.filter { row in
-            guard row.window != nil,
-                  !row.windowTitle.isEmpty,
-                  let bundleID = row.bundleIdentifier,
-                  let fragments = fragmentsByBundleID[bundleID],
-                  !fragments.isEmpty else { return true }
-            let title = row.windowTitle.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
-            return !fragments.contains { title.contains($0) }
+        let excluded = rows.map { isExcludedByTitle($0, fragmentsByBundleID) }
+        var appsWithARow = Set<pid_t>()
+        for (row, isExcluded) in zip(rows, excluded) where !isExcluded {
+            if let pid = row.pid { appsWithARow.insert(pid) }
         }
+        var result: [SwitcherRow] = []
+        result.reserveCapacity(rows.count)
+        for (row, isExcluded) in zip(rows, excluded) {
+            guard isExcluded else {
+                result.append(row)
+                continue
+            }
+            // Same rule as AppCatalogCache's windowless rows: regular apps only.
+            guard let app = row.app, app.activationPolicy == .regular,
+                  appsWithARow.insert(app.processIdentifier).inserted else { continue }
+            result.append(SwitcherRow(app: app, window: nil, windowTitle: "", isMinimized: false))
+        }
+        return result
+    }
+
+    private static func isExcludedByTitle(_ row: SwitcherRow, _ fragmentsByBundleID: [String: [String]]) -> Bool {
+        guard row.window != nil,
+              !row.windowTitle.isEmpty,
+              let bundleID = row.bundleIdentifier,
+              let fragments = fragmentsByBundleID[bundleID] else { return false }
+        let title = row.windowTitle.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        return fragments.contains { title.contains($0) }
+    }
+
+    /// Trim, drop empty fragments, and dedupe case-insensitively, keeping the
+    /// user's order so settings and config.json round-trip unchanged.
+    static func cleanedTitleFragments(_ fragments: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for fragment in fragments {
+            let trimmed = fragment.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let key = trimmed.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            if seen.insert(key).inserted { result.append(trimmed) }
+        }
+        return result
     }
 
     /// Whether this reveal needs any WindowServer Space resolution. A narrowing
