@@ -10,6 +10,12 @@
             "value" : "BetterCmdTab-Einstellungen"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BetterCmdTab Settings"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -28,10 +34,63 @@
             "value" : "Ustawienia BetterCmdTab"
           }
         },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Настройки BetterCmdTab"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "BetterCmdTab 设置"
+          }
+        }
+      }
+    },
+    "NSAppleEventsUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BetterCmdTab listet die Tabs in Browsern (Safari, Chrome, Arc, Brave, Edge, Vivaldi) auf und wechselt zwischen ihnen, wenn du eine Zeile aufklappst."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BetterCmdTab enumerates and switches tabs in browsers (Safari, Chrome, Arc, Brave, Edge, Vivaldi) when you drill into a row."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BetterCmdTab lista las pestañas de los navegadores (Safari, Chrome, Arc, Brave, Edge, Vivaldi) y cambia entre ellas cuando despliegas una fila."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BetterCmdTab liste les onglets des navigateurs (Safari, Chrome, Arc, Brave, Edge, Vivaldi) et bascule entre eux lorsque vous développez une ligne."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BetterCmdTab wyświetla listę kart w przeglądarkach (Safari, Chrome, Arc, Brave, Edge, Vivaldi) i przełącza się między nimi, gdy rozwijasz wiersz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BetterCmdTab получает список вкладок в браузерах (Safari, Chrome, Arc, Brave, Edge, Vivaldi) и переключается между ними, когда вы раскрываете строку."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当你展开某一行时，BetterCmdTab 会列出浏览器（Safari、Chrome、Arc、Brave、Edge、Vivaldi）中的标签页并在它们之间切换。"
           }
         }
       }
