@@ -795,6 +795,14 @@ struct QuickJumpMapping: Equatable, Sendable {
         ["bundleID": bundleID, "letter": String(letter)]
     }
 
+    /// First an unused letter from `name`, then any unused a-z. Nil when none is free.
+    static func freeLetter(name: String, used: Set<Character>) -> Character? {
+        let fromName = name.folding(options: .diacriticInsensitive, locale: nil).lowercased()
+            .filter { $0.isASCII && $0.isLetter }
+        return fromName.first(where: { !used.contains($0) })
+            ?? "abcdefghijklmnopqrstuvwxyz".first(where: { !used.contains($0) })
+    }
+
     init?(dictionary: [String: String]) {
         guard let bundleID = dictionary["bundleID"],
               let letter = dictionary["letter"] else { return nil }
@@ -1196,7 +1204,19 @@ final class Preferences: ObservableObject {
     }
 
     var quickJumpLettersByBundleID: [String: Character] {
-        Dictionary(uniqueKeysWithValues: quickJumpMappings.map { ($0.bundleID, $0.letter) })
+        Self.quickJumpLetters(quickJumpMappings, vimEnabled: vimNavigationEnabled)
+    }
+
+    /// Vim navigation claims h/j/k/l ahead of quick-jump, so those mappings sit out while it is on.
+    nonisolated static func quickJumpLetters(
+        _ mappings: [QuickJumpMapping], vimEnabled: Bool
+    ) -> [String: Character] {
+        let blocked = vimEnabled ? HotkeyTap.vimNavigationLetters : []
+        var letters: [String: Character] = [:]
+        for mapping in mappings where !blocked.contains(mapping.letter) {
+            letters[mapping.bundleID] = mapping.letter
+        }
+        return letters
     }
 
     /// Bundle identifiers left out of letter-hint generation entirely: no hint is

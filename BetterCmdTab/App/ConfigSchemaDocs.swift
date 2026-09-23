@@ -360,7 +360,7 @@ enum ConfigSchemaDocs {
                         pattern: bundleIDPattern),
                     "letter": ConfigSettingDoc(
                         "string", "One ASCII letter used as this app's quick-jump hint.",
-                        pattern: "^[a-z]$"),
+                        pattern: "^[A-Za-z]$"),
                 ],
                 required: ["bundleID", "letter"])),
         "excludedBundleIDs": ConfigSettingDoc(

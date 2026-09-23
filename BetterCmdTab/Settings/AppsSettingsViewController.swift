@@ -330,7 +330,7 @@ final class AppsSettingsViewController: SettingsTabViewController {
 
     /// Display name only — skips the icon disk-decode `appInfo` does, so the
     /// pin-order sort doesn't pay for an `NSImage` it never reads.
-    nonisolated private static func appName(for bundleID: String) -> String {
+    nonisolated static func appName(for bundleID: String) -> String {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
             return bundleID
         }

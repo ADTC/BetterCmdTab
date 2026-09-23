@@ -234,6 +234,21 @@ struct NativeOverridePlanTests {
         #expect(Self.has(plan, 37, .letterJump))
     }
 
+    @Test func visibleQuickJumpLetter_yieldsSameKeyActionToLetterJump() {
+        let typed: [UInt32: Character] = [13: "w", 46: "m", 4: "H", 12: "q", 3: "f"]
+        let actions = actionsYieldingToQuickJump(Self.panelActions, letters: ["h"]) { typed[$0] }
+        #expect(actions == Self.panelActions.filter { $0.action != .hide })
+        let plan = computeNativeOverridePlan(trigger: Self.native(), secureInputActive: true,
+                                             panelOpen: true, holdModifierDown: true,
+                                             panelActions: actions)
+        #expect(Self.kinds(plan, 4) == [.letterJump])
+    }
+
+    @Test func nonClashingQuickJumpLetter_keepsActions() {
+        let actions = actionsYieldingToQuickJump(Self.panelActions, letters: ["z"]) { _ in "a" }
+        #expect(actions == Self.panelActions)
+    }
+
     @Test func vimEnabled_searchMode_lettersStillTypeIntoQuery() {
         // Search is handled before vim on the tap, so under SEI h/j/k/l must
         // type into the query, not navigate — no vim nav chords in search mode.

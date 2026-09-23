@@ -181,17 +181,35 @@ private final class QuickJumpMappingsSheetViewController: NSViewController {
         }
     }
 
-    private func persist() {
-        Preferences.shared.quickJumpMappings = mappings
-        Preferences.shared.letterHintExcludedBundleIDs = excluded
+    /// Re-read both lists before an edit: config.json or an import can change them
+    /// while the sheet is open, and `persist()` writes both back.
+    private func reload() {
         mappings = Preferences.shared.quickJumpMappings
         excluded = Preferences.shared.letterHintExcludedBundleIDs
     }
 
+    private func persist() {
+        Preferences.shared.quickJumpMappings = mappings
+        Preferences.shared.letterHintExcludedBundleIDs = excluded
+        reload()
+    }
+
     private func changeLetter(for bundleID: String, to rawLetter: String) -> Bool {
+        let shown = (mappings, excluded)
+        reload()
+        if (mappings, excluded) != shown {
+            // Deferred: the calling row's commitLetter is still on the stack.
+            DispatchQueue.main.async { [weak self] in self?.rebuildRows() }
+        }
         guard let candidate = QuickJumpMapping(bundleID: bundleID, letter: rawLetter),
-              !mappings.contains(where: { $0.bundleID != bundleID && $0.letter == candidate.letter }),
               let index = mappings.firstIndex(where: { $0.bundleID == bundleID }) else {
+            NSSound.beep()
+            return false
+        }
+        // Focus leaving the field commits too, so an unchanged h/j/k/l row must not beep.
+        if mappings[index] == candidate { return true }
+        guard !Self.vimReservedLetters.contains(candidate.letter),
+              !mappings.contains(where: { $0.bundleID != bundleID && $0.letter == candidate.letter }) else {
             NSSound.beep()
             return false
         }
@@ -204,21 +222,31 @@ private final class QuickJumpMappingsSheetViewController: NSViewController {
     /// its mapping; un-skipping gives it a freshly picked unused letter, the same
     /// way a newly added app is seeded.
     private func setSkip(_ bundleID: String, _ skip: Bool) {
+        reload()
+        guard mappings.contains(where: { $0.bundleID == bundleID }) || excluded.contains(bundleID) else {
+            rebuildRows()
+            return
+        }
         if skip {
             mappings.removeAll { $0.bundleID == bundleID }
             if !excluded.contains(bundleID) { excluded.append(bundleID) }
+        } else if !mappings.contains(where: { $0.bundleID == bundleID }) {
+            guard let mapping = seededMapping(for: bundleID) else {
+                NSSound.beep()
+                rebuildRows()
+                return
+            }
+            excluded.removeAll { $0 == bundleID }
+            mappings.append(mapping)
         } else {
             excluded.removeAll { $0 == bundleID }
-            if !mappings.contains(where: { $0.bundleID == bundleID }),
-               let mapping = QuickJumpMapping(bundleID: bundleID, letter: String(freeLetter(for: bundleID))) {
-                mappings.append(mapping)
-            }
         }
         persist()
         rebuildRows()
     }
 
     private func remove(bundleID: String) {
+        reload()
         mappings.removeAll { $0.bundleID == bundleID }
         excluded.removeAll { $0 == bundleID }
         persist()
@@ -226,15 +254,18 @@ private final class QuickJumpMappingsSheetViewController: NSViewController {
     }
 
     /// An unused letter for `bundleID`: first an unused letter from its name, then
-    /// any unused a–z. Falls back to "a" only if every letter is already taken.
-    private func freeLetter(for bundleID: String) -> Character {
-        let used = Set(mappings.map(\.letter))
-        let name = AppsSettingsViewController.appInfo(for: bundleID).name
-        let fromName = name.folding(options: .diacriticInsensitive, locale: nil).lowercased()
-            .filter { $0.isASCII && $0.isLetter }
-        return fromName.first(where: { !used.contains($0) })
-            ?? "abcdefghijklmnopqrstuvwxyz".first(where: { !used.contains($0) })
-            ?? "a"
+    /// any unused a–z, skipping vim's h/j/k/l while that is on. Nil when none is free.
+    private func seededMapping(for bundleID: String) -> QuickJumpMapping? {
+        let name = AppsSettingsViewController.appName(for: bundleID)
+        let used = Set(mappings.map(\.letter)).union(Self.vimReservedLetters)
+        // An uninstalled app's name falls back to its bundle ID, whose "com." says nothing.
+        let letter = QuickJumpMapping.freeLetter(name: name == bundleID ? "" : name, used: used)
+        return letter.flatMap { QuickJumpMapping(bundleID: bundleID, letter: String($0)) }
+    }
+
+    /// h/j/k/l move the selection when vim navigation is on, so they cannot jump.
+    private static var vimReservedLetters: Set<Character> {
+        Preferences.shared.vimNavigationEnabled ? HotkeyTap.vimNavigationLetters : []
     }
 
     @objc private func addApp() {
@@ -247,11 +278,13 @@ private final class QuickJumpMappingsSheetViewController: NSViewController {
             confirmTitle: String(localized: "Add")
         ) { [weak self] selection in
             guard let self, let bundleID = selection.first else { return }
-            if self.mappings.contains(where: { $0.bundleID == bundleID }) || self.excluded.contains(bundleID) {
+            self.reload()
+            guard !self.mappings.contains(where: { $0.bundleID == bundleID }),
+                  !self.excluded.contains(bundleID),
+                  let mapping = self.seededMapping(for: bundleID) else {
                 NSSound.beep()
                 return
             }
-            guard let mapping = QuickJumpMapping(bundleID: bundleID, letter: String(self.freeLetter(for: bundleID))) else { return }
             self.mappings.append(mapping)
             self.persist()
             self.rebuildRows()
@@ -296,7 +329,7 @@ private final class QuickJumpMappingRowView: NSView, NSTextFieldDelegate {
         self.letter.stringValue = acceptedLetter
         self.letter.alignment = .center
         self.letter.font = .monospacedSystemFont(ofSize: 13, weight: .semibold)
-        self.letter.placeholderString = isSkipped ? "—" : "A"
+        self.letter.placeholderString = isSkipped ? nil : "A"
         self.letter.delegate = self
         self.letter.target = self
         self.letter.action = #selector(commitLetter)

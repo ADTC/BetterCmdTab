@@ -866,7 +866,7 @@ struct SettingsPortabilityTests {
         let mappingProperties = try #require(mapping["properties"] as? [String: [String: Any]])
         #expect(mapping["required"] as? [String] == ["bundleID", "letter"])
         #expect(mapping["additionalProperties"] as? Bool == false)
-        #expect(mappingProperties["letter"]?["pattern"] as? String == "^[a-z]$")
+        #expect(mappingProperties["letter"]?["pattern"] as? String == "^[A-Za-z]$")
 
         // Overrides are a plist [String: String]: every value is the *string*
         // form of the global setting, and unknown keys are carried through.

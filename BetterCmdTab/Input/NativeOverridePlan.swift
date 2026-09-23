@@ -77,6 +77,20 @@ struct PanelActionSpec: Equatable {
     var action: ChordSpec.Kind
 }
 
+/// Drops the actions whose key types a visible custom quick-jump letter, so the
+/// letter-jump chord on that key wins, as in the tap.
+func actionsYieldingToQuickJump(
+    _ actions: [PanelActionSpec],
+    letters quickJumpLetters: Set<Character>,
+    typedBy character: (UInt32) -> Character?
+) -> [PanelActionSpec] {
+    guard !quickJumpLetters.isEmpty else { return actions }
+    return actions.filter { action in
+        guard let typed = character(action.keyCode) else { return true }
+        return !quickJumpLetters.contains(Character(typed.lowercased()))
+    }
+}
+
 /// The complete override decision for a given state.
 struct NativeOverridePlan: Equatable {
     /// Raw symbolic-hotkey ids to leave disabled; everything else re-enabled.

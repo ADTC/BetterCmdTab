@@ -548,6 +548,12 @@
             "value" : "Dodaj fragmenty tytułu…"
           }
         },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавить фрагменты заголовка…"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5788,6 +5794,12 @@
             "value" : "Ukrywaj tylko okna, których tytuł zawiera jeden z tych zwrotów. Dopasowanie ignoruje wielkość liter i znaki diakrytyczne; pozostałe okna aplikacji nadal są dostępne. Po każdym zwrocie naciśnij Return lub wpisz przecinek."
           }
         },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скрывать только окна, в заголовке которых есть одна из этих фраз. Сравнение не учитывает регистр и диакритические знаки; остальные окна приложения остаются доступными. После каждой фразы нажмите Return или введите запятую."
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5820,6 +5832,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ukryj tytuły zawierające"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скрыть заголовки, содержащие"
           }
         },
         "zh-Hans" : {
@@ -17841,6 +17859,126 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "v%@ — 查看更新"
+          }
+        }
+      }
+    },
+    "Mapped: %lld, skipped: %lld. Skipped apps get no letter; a mapped letter wins over a same-key panel action." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugeordnet: %lld, übersprungen: %lld. Übersprungene Apps erhalten keinen Buchstaben; ein zugeordneter Buchstabe hat Vorrang vor einer Panel-Aktion mit derselben Taste."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asignadas: %lld, omitidas: %lld. Las apps omitidas no reciben letra; una letra asignada tiene prioridad sobre una acción del panel con la misma tecla."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Associées : %lld, ignorées : %lld. Les apps ignorées n'ont pas de lettre ; une lettre associée l'emporte sur une action du panneau utilisant la même touche."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przypisane: %lld, pominięte: %lld. Pominięte aplikacje nie dostają litery; przypisana litera ma pierwszeństwo przed akcją panelu na tym samym klawiszu."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Назначено: %lld, пропущено: %lld. Пропущенные приложения не получают букву; назначенная буква имеет приоритет над действием панели на той же клавише."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已映射：%lld，已跳过：%lld。已跳过的应用没有字母；映射的字母优先于同一按键的面板操作。"
+          }
+        }
+      }
+    },
+    "Mappings configured: %lld. A mapped letter wins over a same-key panel action while that app is visible." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konfigurierte Zuordnungen: %lld. Ein zugeordneter Buchstabe hat Vorrang vor einer Panel-Aktion mit derselben Taste, solange die App sichtbar ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asignaciones configuradas: %lld. Una letra asignada tiene prioridad sobre una acción del panel con la misma tecla mientras esa app está visible."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Associations configurées : %lld. Une lettre associée l'emporte sur une action du panneau utilisant la même touche tant que cette app est visible."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skonfigurowane przypisania: %lld. Przypisana litera ma pierwszeństwo przed akcją panelu na tym samym klawiszu, gdy ta aplikacja jest widoczna."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Настроено назначений: %lld. Назначенная буква имеет приоритет над действием панели на той же клавише, пока это приложение видно."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已配置映射：%lld。当该应用可见时，映射的字母优先于同一按键的面板操作。"
+          }
+        }
+      }
+    },
+    "Skipped apps: %lld. These show no jump letter and reserve none, freeing that letter for others." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übersprungene Apps: %lld. Sie zeigen keinen Sprungbuchstaben und reservieren keinen, sodass der Buchstabe für andere frei wird."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apps omitidas: %lld. No muestran letra de salto ni reservan ninguna, dejando esa letra libre para otras."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apps ignorées : %lld. Elles n'affichent aucune lettre de saut et n'en réservent aucune, ce qui libère cette lettre pour les autres."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pominięte aplikacje: %lld. Nie pokazują litery skoku i żadnej nie rezerwują, więc ta litera zostaje wolna dla innych."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пропущено приложений: %lld. У них нет буквы перехода, и они её не занимают, освобождая букву для других."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已跳过的应用：%lld。它们不显示跳转字母，也不占用字母，从而把该字母留给其他应用。"
           }
         }
       }

@@ -58,6 +58,7 @@ final class SwitcherController: SwitcherViewDelegate {
     /// disabled across a crash (see `computeNativeOverridePlan`).
     private let secureInputMonitor = SecureInputMonitor()
     private var secureInputActive = false
+    private var activeQuickJumpLetters = Set<Character>()
     /// Polls the hold modifier to detect ⌘-release under Secure Event Input
     /// (where no release event is delivered) and to supply the live hold state
     /// that gates the in-panel Carbon chords. Runs only while the panel is open
@@ -722,10 +723,8 @@ final class SwitcherController: SwitcherViewDelegate {
         RowLabels.setExcludedBundleIDs(Set(Preferences.shared.letterHintExcludedBundleIDs))
         Preferences.shared.$quickJumpMappings
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] mappings in
-                RowLabels.setCustomMappings(
-                    Dictionary(uniqueKeysWithValues: mappings.map { ($0.bundleID, $0.letter) })
-                )
+            .sink { [weak self] _ in
+                RowLabels.setCustomMappings(Preferences.shared.quickJumpLettersByBundleID)
                 guard let self, self.phase == .visible else { return }
                 self.baseLabels = RowLabels.labels(for: self.baseRows)
                 self.refreshDisplay()
@@ -907,7 +906,13 @@ final class SwitcherController: SwitcherViewDelegate {
         hotkey.setVimNavigationEnabled(Preferences.shared.vimNavigationEnabled)
         Preferences.shared.$vimNavigationEnabled
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] enabled in self?.hotkey.setVimNavigationEnabled(enabled) }
+            .sink { [weak self] enabled in
+                self?.hotkey.setVimNavigationEnabled(enabled)
+                RowLabels.setCustomMappings(Preferences.shared.quickJumpLettersByBundleID)
+                guard let self, self.phase == .visible else { return }
+                self.baseLabels = RowLabels.labels(for: self.baseRows)
+                self.refreshDisplay()
+            }
             .store(in: &cancellables)
 
         // Tap-Shift-to-step-backwards: gated in the tap's flagsChanged handler so
@@ -1322,7 +1327,9 @@ final class SwitcherController: SwitcherViewDelegate {
             holdModifierDown: holdMonitor.isHeld,
             searchActive: searchActive,
             tabDrillActive: tabDrillActive,
-            panelActions: panelActionSpecs(),
+            panelActions: actionsYieldingToQuickJump(panelActionSpecs(), letters: activeQuickJumpLetters) {
+                KeyboardLayout.character(for: $0)
+            },
             vimNavigationEnabled: Preferences.shared.vimNavigationEnabled,
             searchKeyCode: Self.panelKeyCode(.panelSearch(for: activeTarget.storageKey)),
             tabDrillKeyCode: Self.panelKeyCode(.panelTabDrill(for: activeTarget.storageKey))
@@ -2030,7 +2037,7 @@ final class SwitcherController: SwitcherViewDelegate {
                 // profile's keys instead of the last shortcut's. Change-guarded.
                 activeTarget = .switchApps
                 pushPanelKeyBindings()
-                hotkey.setActiveQuickJumpLetters([])
+                setActiveQuickJumpLetters([])
                 // Bound the post-SEI force-close window to the panel that was open
                 // across the flap, so a fresh panel opened later isn't force-closed
                 // by a stale stamp (issue #16). A continuing flap re-stamps anyway.
@@ -3280,6 +3287,7 @@ final class SwitcherController: SwitcherViewDelegate {
         // "No open windows" empty state instead of flashing away (#31). This
         // also covers a scoped open whose filter matches nothing.
 
+        syncActiveQuickJumpLetters()
         let sessionScreen = resolveSessionScreen()
         panel.targetScreen = sessionScreen
         currentMetrics = makeMetrics()
@@ -3380,6 +3388,7 @@ final class SwitcherController: SwitcherViewDelegate {
             Self.windowSelectionIndex(in: rows, selected: $0)
         } ?? (rows.isEmpty ? 0 : max(0, min(collapsedIndex, rows.count - 1)))
 
+        syncActiveQuickJumpLetters()
         let sessionScreen = resolveSessionScreen()
         panel.targetScreen = sessionScreen
         currentMetrics = makeMetrics()
@@ -5779,7 +5788,7 @@ final class SwitcherController: SwitcherViewDelegate {
     /// mapping override a same-key in-panel action such as W = Close.
     private func syncActiveQuickJumpLetters() {
         guard effective.letterHintsEnabled, !searchActive else {
-            hotkey.setActiveQuickJumpLetters([])
+            setActiveQuickJumpLetters([])
             return
         }
         let mappings = Preferences.shared.quickJumpLettersByBundleID
@@ -5791,7 +5800,15 @@ final class SwitcherController: SwitcherViewDelegate {
                   label.first == mapped else { continue }
             active.insert(mapped)
         }
-        hotkey.setActiveQuickJumpLetters(active)
+        setActiveQuickJumpLetters(active)
+    }
+
+    private func setActiveQuickJumpLetters(_ letters: Set<Character>) {
+        guard letters != activeQuickJumpLetters else { return }
+        activeQuickJumpLetters = letters
+        hotkey.setActiveQuickJumpLetters(letters)
+        // Under Secure Event Input the Carbon chords route keys, so re-plan them.
+        if secureInputActive { syncNativeHotkeyOverride() }
     }
 
     // MARK: - Fuzzy search

@@ -432,7 +432,7 @@
           },
           "letter" : {
             "description" : "One ASCII letter used as this app's quick-jump hint.",
-            "pattern" : "^[a-z]$",
+            "pattern" : "^[A-Za-z]$",
             "type" : "string"
           }
         },

@@ -1438,14 +1438,13 @@ final class HotkeyTap: @unchecked Sendable {
                             // hint generation never assigns them as letter-jump
                             // hints the tap would silently swallow here.
                             //
-                            // `translate` is needed only by the vim check and the
-                            // type-to-search opener, so it is computed only when a
-                            // branch that needs it actually runs — a bound action
-                            // key (⌘W/⌘M/⌘H/⌘Q/⌘F) short-circuits in `panelKeyMap`
-                            // below without ever paying a translate. When it is
-                            // computed, the resolved character is reused by the
-                            // branches below, so a keystroke is still translated
-                            // at most once.
+                            // `translate` is needed only by the vim check, a visible
+                            // custom quick-jump hint and the type-to-search opener,
+                            // so it is computed only when one of those runs. With
+                            // none of them, a bound action key (⌘W/⌘M/⌘H/⌘Q/⌘F)
+                            // short-circuits in `panelKeyMap` without a translate.
+                            // The resolved character is reused by the branches
+                            // below, so a keystroke is translated at most once.
                             let vimOn = vimNavigationFlag.withLock { $0 }
                             var typed: Character? = vimOn ? translate(keyCode: keyCode) : nil
                             if vimOn,
