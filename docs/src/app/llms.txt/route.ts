@@ -4,6 +4,6 @@ import { canonicalizeLLMLinks, source } from '@/lib/source';
 
 export const revalidate = false;
 
-export function GET() {
-  return new Response(canonicalizeLLMLinks(llms(source).index()));
+export async function GET() {
+  return new Response(canonicalizeLLMLinks(await llms(source).index()));
 }

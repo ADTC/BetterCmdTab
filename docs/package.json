@@ -12,26 +12,26 @@
     "format:check": "oxfmt --check ."
   },
   "dependencies": {
-    "cnfast": "^0.1.0",
-    "fumadocs-core": "16.14.4",
-    "fumadocs-mdx": "15.2.3",
-    "fumadocs-ui": "npm:@fumadocs/base-ui@16.14.4",
-    "lucide-react": "^1.31.0",
-    "next": "16.3.1",
-    "next-intl": "^4.13.6",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "cn": "^0.4.0",
+    "fumadocs-core": "16.15.13",
+    "fumadocs-mdx": "15.4.3",
+    "fumadocs-ui": "npm:@fumadocs/base-ui@16.15.13",
+    "lucide-react": "^1.47.0",
+    "next": "16.3.6",
+    "next-intl": "^4.14.6",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "@types/mdx": "^2.0.14",
-    "@types/node": "^26.2.0",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "oxfmt": "^0.63.0",
-    "oxlint": "^1.78.0",
-    "postcss": "^8.5.26",
+    "@types/node": "^26.6.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "oxfmt": "^0.70.0",
+    "oxlint": "^1.85.0",
+    "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   }
 }
