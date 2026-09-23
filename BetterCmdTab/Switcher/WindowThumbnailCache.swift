@@ -139,11 +139,7 @@ final class WindowThumbnailCache {
            Date().timeIntervalSince(ts) < maxAge { return false }
         guard let token = requests.begin(wid) else { return false }
         let task = Task { [weak self] in
-            let image = await Self.capture(
-                wid: wid,
-                pixelHeight: pixelHeight,
-                allowCGFallback: !isLive
-            )
+            let image = await Self.capture(wid: wid, pixelHeight: pixelHeight)
             guard !Task.isCancelled else { return }
             self?.store(
                 image, for: wid, token: token, pixelHeight: pixelHeight,
@@ -281,17 +277,12 @@ final class WindowThumbnailCache {
 
     // MARK: - Capture
 
-    nonisolated private static func capture(
-        wid: CGWindowID,
-        pixelHeight: CGFloat,
-        allowCGFallback: Bool
-    ) async -> NSImage? {
+    nonisolated private static func capture(wid: CGWindowID, pixelHeight: CGFloat) async -> NSImage? {
+        // 14+ is SCK only: a window SCK misses (e.g. Chrome DRM video, #199) keeps
+        // its app icon rather than retrying through CGWindowListCreateImage.
         if #available(macOS 14.0, *) {
-            if let image = await captureSCK(wid: wid, pixelHeight: pixelHeight) {
-                return image
-            }
+            return await captureSCK(wid: wid, pixelHeight: pixelHeight)
         }
-        guard allowCGFallback else { return nil }
         return captureCG(wid: wid, pixelHeight: pixelHeight)
     }
 
@@ -568,10 +559,9 @@ private actor SCWindowProvider {
             lastFailureWasTransient = false
         } catch {
             guard !Task.isCancelled, generation == refreshGeneration else { return }
-            // Leave the previous map (possibly empty); the CG fallback path still
-            // gets a chance. Classify the failure so the pacing above can retry a
-            // transient hiccup quickly while still holding back per-tile XPC when
-            // the permission is genuinely denied.
+            // Leave the previous map (possibly empty). Classify the failure so the
+            // pacing above can retry a transient hiccup quickly while still holding
+            // back per-tile XPC when the permission is genuinely denied.
             fetchedAt = .distantPast
             lastFailureAt = Date()
             lastFailureWasTransient = CGPreflightScreenCaptureAccess()
