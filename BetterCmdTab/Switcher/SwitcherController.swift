@@ -58,6 +58,7 @@ final class SwitcherController: SwitcherViewDelegate {
     /// disabled across a crash (see `computeNativeOverridePlan`).
     private let secureInputMonitor = SecureInputMonitor()
     private var secureInputActive = false
+    private var activeQuickJumpLetters = Set<Character>()
     /// Polls the hold modifier to detect ⌘-release under Secure Event Input
     /// (where no release event is delivered) and to supply the live hold state
     /// that gates the in-panel Carbon chords. Runs only while the panel is open
@@ -716,6 +717,30 @@ final class SwitcherController: SwitcherViewDelegate {
         // recomputed on every binding/layout change) into RowLabels so hint
         // generation never assigns a letter that's bound to an action.
         hotkey.onReservedLettersChanged = { letters in RowLabels.setReserved(letters) }
+        // Persistent mappings affect only the open panel. Mirror them into the
+        // label generator and rebuild live if config-file sync changes them.
+        RowLabels.setCustomMappings(Preferences.shared.quickJumpLettersByBundleID)
+        RowLabels.setExcludedBundleIDs(Set(Preferences.shared.letterHintExcludedBundleIDs))
+        Preferences.shared.$quickJumpMappings
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                RowLabels.setCustomMappings(Preferences.shared.quickJumpLettersByBundleID)
+                guard let self, self.phase == .visible else { return }
+                self.baseLabels = RowLabels.labels(for: self.baseRows)
+                self.refreshDisplay()
+            }
+            .store(in: &cancellables)
+        // Same live-mirror path for the letter-hint exclusion list: apply on
+        // change and rebuild the open panel so a settings edit lands at once.
+        Preferences.shared.$letterHintExcludedBundleIDs
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] ids in
+                RowLabels.setExcludedBundleIDs(Set(ids))
+                guard let self, self.phase == .visible else { return }
+                self.baseLabels = RowLabels.labels(for: self.baseRows)
+                self.refreshDisplay()
+            }
+            .store(in: &cancellables)
         // The tap reported a re-enable storm (it keeps getting disabled — most
         // often because Accessibility was revoked under an active session tap).
         // Recover on main so the spinning tap thread can't keep freezing the
@@ -881,7 +906,13 @@ final class SwitcherController: SwitcherViewDelegate {
         hotkey.setVimNavigationEnabled(Preferences.shared.vimNavigationEnabled)
         Preferences.shared.$vimNavigationEnabled
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] enabled in self?.hotkey.setVimNavigationEnabled(enabled) }
+            .sink { [weak self] enabled in
+                self?.hotkey.setVimNavigationEnabled(enabled)
+                RowLabels.setCustomMappings(Preferences.shared.quickJumpLettersByBundleID)
+                guard let self, self.phase == .visible else { return }
+                self.baseLabels = RowLabels.labels(for: self.baseRows)
+                self.refreshDisplay()
+            }
             .store(in: &cancellables)
 
         // Tap-Shift-to-step-backwards: gated in the tap's flagsChanged handler so
@@ -1296,7 +1327,9 @@ final class SwitcherController: SwitcherViewDelegate {
             holdModifierDown: holdMonitor.isHeld,
             searchActive: searchActive,
             tabDrillActive: tabDrillActive,
-            panelActions: panelActionSpecs(),
+            panelActions: actionsYieldingToQuickJump(panelActionSpecs(), letters: activeQuickJumpLetters) {
+                KeyboardLayout.character(for: $0)
+            },
             vimNavigationEnabled: Preferences.shared.vimNavigationEnabled,
             searchKeyCode: Self.panelKeyCode(.panelSearch(for: activeTarget.storageKey)),
             tabDrillKeyCode: Self.panelKeyCode(.panelTabDrill(for: activeTarget.storageKey))
@@ -2004,6 +2037,7 @@ final class SwitcherController: SwitcherViewDelegate {
                 // profile's keys instead of the last shortcut's. Change-guarded.
                 activeTarget = .switchApps
                 pushPanelKeyBindings()
+                setActiveQuickJumpLetters([])
                 // Bound the post-SEI force-close window to the panel that was open
                 // across the flap, so a fresh panel opened later isn't force-closed
                 // by a stale stamp (issue #16). A continuing flap re-stamps anyway.
@@ -3253,6 +3287,7 @@ final class SwitcherController: SwitcherViewDelegate {
         // "No open windows" empty state instead of flashing away (#31). This
         // also covers a scoped open whose filter matches nothing.
 
+        syncActiveQuickJumpLetters()
         let sessionScreen = resolveSessionScreen()
         panel.targetScreen = sessionScreen
         currentMetrics = makeMetrics()
@@ -3353,6 +3388,7 @@ final class SwitcherController: SwitcherViewDelegate {
             Self.windowSelectionIndex(in: rows, selected: $0)
         } ?? (rows.isEmpty ? 0 : max(0, min(collapsedIndex, rows.count - 1)))
 
+        syncActiveQuickJumpLetters()
         let sessionScreen = resolveSessionScreen()
         panel.targetScreen = sessionScreen
         currentMetrics = makeMetrics()
@@ -5717,6 +5753,8 @@ final class SwitcherController: SwitcherViewDelegate {
             }
         }
 
+        syncActiveQuickJumpLetters()
+
         if resetSelectionToTop {
             index = 0
         } else if let selectedRow,
@@ -5743,6 +5781,34 @@ final class SwitcherController: SwitcherViewDelegate {
             tabStripSelectedIndex: tabIndex
         )
         panel.present(opacity: effective.panelOpacity)
+    }
+
+    /// Publish only custom letters that are exact, reachable labels in the
+    /// current panel. This is the narrow condition under which HotkeyTap lets a
+    /// mapping override a same-key in-panel action such as W = Close.
+    private func syncActiveQuickJumpLetters() {
+        guard effective.letterHintsEnabled, !searchActive else {
+            setActiveQuickJumpLetters([])
+            return
+        }
+        let mappings = Preferences.shared.quickJumpLettersByBundleID
+        var active = Set<Character>()
+        for (row, label) in zip(rows, labels) {
+            guard label.count == 1,
+                  let bundleID = row.bundleIdentifier,
+                  let mapped = mappings[bundleID],
+                  label.first == mapped else { continue }
+            active.insert(mapped)
+        }
+        setActiveQuickJumpLetters(active)
+    }
+
+    private func setActiveQuickJumpLetters(_ letters: Set<Character>) {
+        guard letters != activeQuickJumpLetters else { return }
+        activeQuickJumpLetters = letters
+        hotkey.setActiveQuickJumpLetters(letters)
+        // Under Secure Event Input the Carbon chords route keys, so re-plan them.
+        if secureInputActive { syncNativeHotkeyOverride() }
     }
 
     // MARK: - Fuzzy search

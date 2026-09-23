@@ -350,6 +350,19 @@ enum ConfigSchemaDocs {
                         values: ConfigValues(IgnoreShortcutsMode.self, \.displayName)),
                 ],
                 required: ["bundleID"])),
+        "quickJumpMappings": ConfigSettingDoc(
+            "array", "Persistent app-to-letter mappings used only while the switcher panel is open.",
+            item: ConfigItemSchema(
+                "object",
+                properties: [
+                    "bundleID": ConfigSettingDoc(
+                        "string", "Bundle identifier of the mapped app.",
+                        pattern: bundleIDPattern),
+                    "letter": ConfigSettingDoc(
+                        "string", "One ASCII letter used as this app's quick-jump hint.",
+                        pattern: "^[A-Za-z]$"),
+                ],
+                required: ["bundleID", "letter"])),
         "excludedBundleIDs": ConfigSettingDoc(
             "array", "Legacy always-hidden bundle IDs, folded into appExceptions at launch. Edit appExceptions instead.",
             item: ConfigItemSchema("string", pattern: bundleIDPattern)),
@@ -361,6 +374,9 @@ enum ConfigSchemaDocs {
             "Per-app window title fragments, keyed by bundle ID. A window whose title contains any fragment (case- and accent-insensitive) is left out of the switcher; the app's other windows stay."),
         "hideAllExcludedBundleIDs": ConfigSettingDoc(
             "array", "Bundle IDs the \"hide all windows\" shortcut leaves visible.",
+            item: ConfigItemSchema("string", pattern: bundleIDPattern)),
+        "letterHintExcludedBundleIDs": ConfigSettingDoc(
+            "array", "Bundle IDs left out of letter hints: no hint is shown and no letter is reserved, freeing that letter for other apps.",
             item: ConfigItemSchema("string", pattern: bundleIDPattern)),
 
         // Tabs

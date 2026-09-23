@@ -258,6 +258,11 @@ final class HotkeyTap: @unchecked Sendable {
     /// Spotlight. Consulted on the tap thread, written from main via
     /// `setTypeToSearchEnabled`. Default off.
     private let typeToSearchFlag = OSAllocatedUnfairLock<Bool>(initialState: false)
+    /// User-mapped quick-jump letters that are present as exact one-letter
+    /// labels in the currently visible panel. These win over an unmodified
+    /// in-panel action on the same key; the controller publishes only letters
+    /// that are actually reachable in the current row set.
+    private let activeQuickJumpLetters = OSAllocatedUnfairLock<Set<Character>>(initialState: [])
     /// Rebindable in-panel action keys (#5): physical keycode → action. Consulted
     /// in the non-search switching branch before the letter-jump fallback, so a
     /// bound key suppresses letter-jumping (same as the old hardcoded W/M/H/Q).
@@ -784,6 +789,25 @@ final class HotkeyTap: @unchecked Sendable {
     /// changes.
     func setTypeToSearchEnabled(_ value: Bool) {
         typeToSearchFlag.withLock { $0 = value }
+    }
+
+    func setActiveQuickJumpLetters(_ letters: Set<Character>) {
+        activeQuickJumpLetters.withLock { $0 = letters }
+    }
+
+    /// Pure precedence rule for a custom quick jump that shares a key with an
+    /// in-panel action. Option/Control preserve modified actions; Shift only
+    /// changes case and therefore still jumps.
+    static func prioritizedQuickJumpLetter(
+        for typed: Character?,
+        activeLetters: Set<Character>,
+        optionHeld: Bool,
+        controlHeld: Bool
+    ) -> Character? {
+        guard !optionHeld, !controlHeld, let typed else { return nil }
+        let lower = Character(typed.lowercased())
+        guard lower.isASCII, lower.isLetter, activeLetters.contains(lower) else { return nil }
+        return lower
     }
 
     /// Pure: the character a key should feed into type-to-search, or `nil` if
@@ -1414,14 +1438,13 @@ final class HotkeyTap: @unchecked Sendable {
                             // hint generation never assigns them as letter-jump
                             // hints the tap would silently swallow here.
                             //
-                            // `translate` is needed only by the vim check and the
-                            // type-to-search opener, so it is computed only when a
-                            // branch that needs it actually runs — a bound action
-                            // key (⌘W/⌘M/⌘H/⌘Q/⌘F) short-circuits in `panelKeyMap`
-                            // below without ever paying a translate. When it is
-                            // computed, the resolved character is reused by the
-                            // branches below, so a keystroke is still translated
-                            // at most once.
+                            // `translate` is needed only by the vim check, a visible
+                            // custom quick-jump hint and the type-to-search opener,
+                            // so it is computed only when one of those runs. With
+                            // none of them, a bound action key (⌘W/⌘M/⌘H/⌘Q/⌘F)
+                            // short-circuits in `panelKeyMap` without a translate.
+                            // The resolved character is reused by the branches
+                            // below, so a keystroke is translated at most once.
                             let vimOn = vimNavigationFlag.withLock { $0 }
                             var typed: Character? = vimOn ? translate(keyCode: keyCode) : nil
                             if vimOn,
@@ -1433,6 +1456,26 @@ final class HotkeyTap: @unchecked Sendable {
                                let vimEvent = Self.vimNavigationEvent(for: Character(ch.lowercased())) {
                                 deliver(vimEvent)
                                 return nil
+                            }
+                            // A persistent app mapping is useful only if it can
+                            // claim the requested letter (W → WhatsApp is the
+                            // common case, despite W also being Close). Override
+                            // a bare action binding only while that exact custom
+                            // hint is visible; otherwise the action keeps its
+                            // normal behavior. Option/Control-modified actions
+                            // remain available by the helper's contract.
+                            let activeQuickJumps = activeQuickJumpLetters.withLock { $0 }
+                            if !activeQuickJumps.isEmpty {
+                                if typed == nil { typed = translate(keyCode: keyCode) }
+                                if let letter = Self.prioritizedQuickJumpLetter(
+                                    for: typed,
+                                    activeLetters: activeQuickJumps,
+                                    optionHeld: optionHeld,
+                                    controlHeld: controlHeld
+                                ) {
+                                    deliver(.letterInput(letter))
+                                    return nil
+                                }
                             }
                             // Bound in-panel action keys (#5) win over the
                             // type-to-search opener below: the panel is held by ⌘,
