@@ -1,5 +1,5 @@
 import AppKit
-import ApplicationServices
+@preconcurrency import ApplicationServices
 import Darwin
 import Foundation
 import os
@@ -163,12 +163,12 @@ enum BrowserTabs {
     /// this raises unconditionally (the ≤1-window skip would drop the only
     /// window when the AX read fails) and activates the process — an AX raise
     /// alone only reorders windows inside the still-inactive browser.
-    private static func bringForward(_ window: AXUIElement, app: NSRunningApplication) {
+    private static func bringForward(_ window: AXUIElement, app: NSRunningApplication, generation: UInt64) {
+        // The script can fail up to 8 s late; don't steal focus from a newer switch.
+        guard Activator.isCurrentActivation(generation) else { return }
         AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-        if #available(macOS 14.0, *) {
-            _ = app.activate(from: NSRunningApplication.current, options: [])
-        } else {
-            app.activate(options: [.activateIgnoringOtherApps])
+        DispatchQueue.main.async {
+            if Activator.isCurrentActivation(generation) { Activator.activateProcess(app) }
         }
     }
 
@@ -657,6 +657,20 @@ enum BrowserTabs {
         return out
     }
 
+    @MainActor
+    static func commitTab(at tabIndex: Int, in app: NSRunningApplication, window: AXUIElement, title: String) {
+        let generation = Activator.beginActivation()
+        // The script's `activate` runs inside the browser, so hand it our activation first (#180).
+        if #available(macOS 14.0, *) { NSApp.yieldActivation(to: app) }
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard activateTab(at: tabIndex, in: app, window: window, title: title, generation: generation) else { return }
+            // From an inactive source (primed tap) the script's own `activate` can be denied.
+            DispatchQueue.main.async {
+                if Activator.isCurrentActivation(generation), !app.isActive { Activator.activateProcess(app) }
+            }
+        }
+    }
+
     /// Switch the row window's browser tab to `tabIndex` (0-based here, 1-based
     /// for AppleScript) and bring the browser forward. Run off-main.
     ///
@@ -664,7 +678,9 @@ enum BrowserTabs {
     /// `window <index>` (no `AXRaise`); falls back to raise + `window 1` when the
     /// title is empty/ambiguous. The `activate` (bring the app forward) stays —
     /// this is the deliberate commit, so the window coming front is expected.
-    static func activateTab(at tabIndex: Int, in app: NSRunningApplication, window: AXUIElement, title: String) -> Bool {
+    private static func activateTab(
+        at tabIndex: Int, in app: NSRunningApplication, window: AXUIElement, title: String, generation: UInt64
+    ) -> Bool {
         // Sending an Apple Event to a quit app relaunches it — bail if terminated.
         guard !app.isTerminated,
               let family = Family.from(bundleID: app.bundleIdentifier),
@@ -727,7 +743,7 @@ enum BrowserTabs {
                 // without Automation and cost no spawn — but skip the second
                 // osascript: re-spawning against a denied/wedged browser only
                 // doubles the give-up latency for no gain.
-                bringForward(window, app: app)
+                bringForward(window, app: app, generation: generation)
                 return false
             }
         }
@@ -744,7 +760,7 @@ enum BrowserTabs {
         """
         guard let raw = runScript(source) else {
             // Same commit-must-do-something fallback as the match path above.
-            bringForward(window, app: app)
+            bringForward(window, app: app, generation: generation)
             return false
         }
         return raw == "true"
