@@ -411,23 +411,44 @@ enum CatalogFilter {
         filterToAllowedSpaces(rows, resolveSpacesMemoized(rows, scope: .currentSpace))
     }
 
-    /// Drop windows that live on a Space outside `allowedSpaces`. Rows
-    /// without a real window (windowless apps, launchables, recents) and any
-    /// window whose Space can't be resolved — including multi-Space (All
-    /// Desktops / sticky) windows, which `PrivateAPI.spaceMembership(forWindows:)`
-    /// leaves unresolved — are kept, so the filter only ever hides windows it's
-    /// certain are elsewhere. Reads Space membership from the shared
-    /// `SpaceResolution`; degrades to a no-op when it's unavailable.
-    static func filterToAllowedSpaces(_ rows: [SwitcherRow], _ spaces: SpaceResolution) -> [SwitcherRow] {
+    /// Drop windows that live on a Space outside `allowedSpaces`, plus
+    /// confirmed-spaceless windows of an app that has a window on some Space:
+    /// that is the shape of a tabbed-away native tab (TextEdit, Preview), and
+    /// activating one drags it onto the current Space. Kept: rows without a real
+    /// window, multi-Space (sticky) or unresolved windows, minimized windows,
+    /// expanded-tab rows (the user asked for them), an app whose only windows
+    /// are spaceless, and every spaceless window under Stage Manager, which
+    /// parks off-stage windows spaceless (#116). The All Spaces scope skips this
+    /// filter, so there such a tab still lists: `resolveTabStacks` only folds
+    /// against an on-screen front. Degrades to a no-op without `SpaceResolution`.
+    static func filterToAllowedSpaces(
+        _ rows: [SwitcherRow],
+        _ spaces: SpaceResolution,
+        stageManager: Bool = WindowEnumerator.isStageManagerEnabled
+    ) -> [SwitcherRow] {
         guard !spaces.allowedSpaces.isEmpty, !spaces.spaceByWindow.isEmpty else { return rows }
+        let dropsSpaceless = !stageManager && !spaces.confirmedSpaceless.isEmpty
+        let pidsOnASpace = dropsSpaceless ? pidsWithWindowOnASpace(rows, spaces) : []
         var dropOffsets = Set<Int>()
         for (offset, row) in rows.enumerated() where row.cgWindowID != 0 {
             if let space = spaces.spaceByWindow[row.cgWindowID], !spaces.allowedSpaces.contains(space) {
+                dropOffsets.insert(offset)
+            } else if dropsSpaceless, spaces.confirmedSpaceless.contains(row.cgWindowID),
+                      !row.isMinimized, !row.isTabSibling,
+                      let pid = row.pid, pidsOnASpace.contains(pid) {
                 dropOffsets.insert(offset)
             }
         }
         if dropOffsets.isEmpty { return rows }
         return rows.enumerated().filter { !dropOffsets.contains($0.offset) }.map(\.element)
+    }
+
+    private static func pidsWithWindowOnASpace(_ rows: [SwitcherRow], _ spaces: SpaceResolution) -> Set<pid_t> {
+        var pids = Set<pid_t>()
+        for row in rows where spaces.spaceByWindow[row.cgWindowID] != nil {
+            if let pid = row.pid { pids.insert(pid) }
+        }
+        return pids
     }
 
     struct PhantomWindowCandidate {
