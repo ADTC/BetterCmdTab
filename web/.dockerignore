@@ -1,0 +1,8 @@
+node_modules
+out
+.tanstack
+dist
+Dockerfile
+.dockerignore
+*.tsbuildinfo
+.DS_Store
