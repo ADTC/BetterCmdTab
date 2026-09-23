@@ -302,7 +302,8 @@ final class AppsPickerSheetViewController: NSViewController, NSTableViewDataSour
                 let key = bid.lowercased()
                 if byKey[key] != nil { continue }
                 let name = url.deletingPathExtension().lastPathComponent
-                byKey[key] = InstalledApp(bundleID: bid, name: name, url: url)
+                // /Applications/Safari.app symlinks into the Cryptex; the link's icon carries an alias arrow (#173).
+                byKey[key] = InstalledApp(bundleID: bid, name: name, url: url.resolvingSymlinksInPath())
             }
         }
 

@@ -108,7 +108,8 @@ final class InstalledAppsIndex {
                     // extensions" in Finder — strip it so the switcher never shows it.
                     var name = fm.displayName(atPath: url.path)
                     if name.hasSuffix(".app") { name.removeLast(4) }
-                    result.append(InstalledApp(name: name, bundleID: bundleID, url: url))
+                    // /Applications/Safari.app symlinks into the Cryptex; the link's icon carries an alias arrow (#173).
+                    result.append(InstalledApp(name: name, bundleID: bundleID, url: url.resolvingSymlinksInPath()))
                 }
             }
         }
