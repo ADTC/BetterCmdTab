@@ -4,14 +4,16 @@ import type { ReactNode } from "react";
 import appCss from "../styles.css?url";
 
 const SITE = "https://bettercmdtab.app";
-const TITLE = "BetterCmdTab — a better Cmd+Tab window switcher for macOS";
+// Title Case after the dash on purpose: Google strips a leading brand that
+// duplicates the site name, so the tail has to read as a title on its own.
+const TITLE = "BetterCmdTab — A Better Cmd+Tab Window Switcher for macOS";
 // The <meta name="description"> variant carries the OS floor; the social cards
 // drop it to stay inside the ~200-char preview budget.
 const DESCRIPTION =
   "A fast, native Cmd+Tab replacement for macOS: grid & list app switcher, fuzzy search & launch, and window cycling. Free, open-source, zero telemetry. macOS 13+.";
 const SOCIAL_DESCRIPTION =
   "A fast, native Cmd+Tab replacement for macOS: grid & list app switcher, fuzzy search & launch, and window cycling. Free, open-source, zero telemetry.";
-const IMAGE_ALT = "BetterCmdTab — a native window switcher and app launcher for macOS";
+const IMAGE_ALT = "BetterCmdTab — A Native Window Switcher and App Launcher for macOS";
 
 // The homepage is the only route, so every tag below is a constant. Router
 // `head()` emits raw tags, so URLs that Next used to absolutise against
@@ -132,7 +134,7 @@ const jsonLd = {
         "Instant Spaces switching and current-Space-only filtering",
         "Cmd+Tab survives Secure Event Input in password fields",
         "Hide the switcher from screen sharing and recordings",
-        "Liquid Glass material on macOS 26, with theming and accent color",
+        "Panel theming with opacity, corner radius, and accent color",
         "Multi-monitor aware — opens under the cursor",
         "Three-finger trackpad gestures with haptics",
         "Export and import your whole setup as a .cmdtab file",
@@ -181,7 +183,7 @@ const jsonLd = {
           name: "Which macOS versions and Macs does it support?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "macOS 13.0 or later, on both Apple Silicon and Intel. The Liquid Glass material lights up on macOS 26.",
+            text: "macOS 13.0 or later, on both Apple Silicon and Intel.",
           },
         },
         {

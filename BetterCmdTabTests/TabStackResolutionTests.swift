@@ -205,6 +205,20 @@ struct TabStackResolutionTests {
         #expect(r.siblingIndices.isEmpty)
     }
 
+    @Test("collapse folds a spaceless background tab whose size drifted 1pt (Ghostty)")
+    func collapseFoldsSizeDriftTab() {
+        let drifted = CGRect(x: F.origin.x, y: F.origin.y, width: F.width, height: F.height - 1)
+        let r = resolve(
+            frames: [F, F, drifted],
+            fromAXList: [true, false, false],
+            onscreen: [true, false, false],
+            spaceless: [false, true, true],
+            expand: false
+        )
+        #expect(r.keep == [true, false, false])
+        #expect(r.siblingIndices[0] == [1, 2])
+    }
+
     @Test("a near-frame window with a different size is never folded")
     func differentSizeKept() {
         let resized = CGRect(x: F.origin.x + 10, y: F.origin.y, width: F.width + 100, height: F.height)

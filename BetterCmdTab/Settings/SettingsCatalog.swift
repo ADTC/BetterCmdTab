@@ -20,6 +20,9 @@ enum SettingsTabID {
     static let appearance = "appearance"
     static let privacy = "privacy"
     static let about = "about"
+    #if DEBUG
+    static let debug = "debug"
+    #endif
 }
 
 /// Section-anchor identifiers. A content controller registers each section
@@ -150,6 +153,7 @@ enum SearchID {
     static let layout = "appearance.layout"
     static let size = "appearance.size"
     static let gridColumns = "appearance.gridColumns"
+    static let selectionColor = "appearance.selectionColor"
     static let gridSingleRow = "appearance.gridSingleRow"
     static let listMaxWidth = "appearance.listMaxWidth"
     static let windowTitle = "appearance.windowTitle"
@@ -197,6 +201,9 @@ enum SettingsCatalog {
                 case SettingsTabID.apps:       return AppsSettingsViewController()
                 case SettingsTabID.appearance: return AppearanceSettingsViewController()
                 case SettingsTabID.privacy:    return PrivacySettingsViewController()
+                #if DEBUG
+                case SettingsTabID.debug:      return DebugSettingsViewController()
+                #endif
                 default:                       return AboutSettingsViewController()
                 }
             },
@@ -211,7 +218,18 @@ enum SettingsCatalog {
 
     // MARK: - Tabs
 
-    static let tabs: [SettingsTab] = [
+    #if DEBUG
+    static let tabs = productTabs + [
+        SettingsTab(
+            id: SettingsTabID.debug, title: "Debug", icon: "ladybug.fill",
+            iconStyle: style(0x898A8F, 0x67686E, scale: 0.9)
+        ),
+    ]
+    #else
+    static let tabs = productTabs
+    #endif
+
+    private static let productTabs: [SettingsTab] = [
         // Palette + icon style mirror BetterAudio: muted macOS System Settings
         // gradient badges (gray, blue, purple, pink, red, orange; white badge for
         // About) with white SF Symbols.
@@ -490,6 +508,8 @@ enum SettingsCatalog {
         // Appearance · Panel
         item(SearchID.theme, .appearance, SettingsAnchor.appearancePanel, String(localized: "Appearance"), String(localized: "Panel"),
              String(localized: "Appearance"), ["theme", "appearance", "light", "dark", "system", "color scheme"]),
+        item(SearchID.selectionColor, .appearance, SettingsAnchor.appearancePanel, String(localized: "Appearance"), String(localized: "Panel"),
+             String(localized: "Selection color"), ["selection", "color", "colour", "accent", "highlight", "border", "tint", "selected"]),
         item(SearchID.opacity, .appearance, SettingsAnchor.appearancePanel, String(localized: "Appearance"), String(localized: "Panel"),
              String(localized: "Panel opacity"), ["opacity", "transparency", "alpha", "translucent"]),
         item(SearchID.cornerRadius, .appearance, SettingsAnchor.appearancePanel, String(localized: "Appearance"), String(localized: "Panel"),

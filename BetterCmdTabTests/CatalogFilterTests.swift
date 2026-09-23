@@ -19,7 +19,7 @@ struct CatalogFilterTests {
         sinkMinimizedWindows: Bool = true
     ) -> CatalogFilter.Config {
         CatalogFilter.Config(
-            hideModes: hideModes, pinned: pinned,
+            hideModes: hideModes, excludedTitleFragments: [:], pinned: pinned,
             showMinimized: showMinimized, showHidden: showHidden, showWindowless: showWindowless,
             spaceScope: spaceScope, sortOrder: sortOrder, sinkHiddenApps: sinkHiddenApps,
             sinkMinimizedWindows: sinkMinimizedWindows)
@@ -74,6 +74,57 @@ struct CatalogFilterTests {
         let cfg = config(hideModes: ["com.x": .dontHide], showMinimized: false)
         #expect(!CatalogFilter.includes(bundleID: "com.x", isPlaceholder: false, isMinimized: true, appHidden: false, cfg))
         #expect(CatalogFilter.includes(bundleID: "com.x", isPlaceholder: false, isMinimized: false, appHidden: false, cfg))
+    }
+
+    @Test("window-title exclusions are app-scoped and case/diacritic insensitive")
+    func windowTitleExclusions() {
+        let app = NSRunningApplication.current
+        let ownBundleID = app.bundleIdentifier ?? ""
+        let rows = [
+            SwitcherRow(app: app, window: AXUIElementCreateSystemWide(), windowTitle: "Picture-in-Picture", isMinimized: false),
+            SwitcherRow(app: app, window: AXUIElementCreateSystemWide(), windowTitle: "RéSUMé — Draft", isMinimized: false),
+            SwitcherRow(app: app, window: AXUIElementCreateSystemWide(), windowTitle: "Main document", isMinimized: false),
+        ]
+        let filtered = CatalogFilter.filterExcludedWindowTitles(
+            rows,
+            [ownBundleID: ["picture-in-picture", "resume"]]
+        )
+        #expect(filtered.map(\.windowTitle) == ["Main document"])
+    }
+
+    @Test("title exclusions preserve windowless rows and other apps")
+    func windowTitleExclusionsStayScoped() {
+        let app = NSRunningApplication.current
+        let ownBundleID = app.bundleIdentifier ?? ""
+        let windowless = SwitcherRow(app: app, window: nil, windowTitle: "", isMinimized: false)
+        let titled = SwitcherRow(app: app, window: AXUIElementCreateSystemWide(), windowTitle: "Inspector", isMinimized: false)
+        #expect(CatalogFilter.filterExcludedWindowTitles([windowless, titled], ["com.other": ["inspector"]]).count == 2)
+        let filtered = CatalogFilter.filterExcludedWindowTitles([windowless, titled], [ownBundleID: ["inspector"]])
+        #expect(filtered.count == 1)
+        #expect(filtered[0].window == nil)
+    }
+
+    @Test("an app whose every window is excluded keeps one windowless row")
+    func windowTitleExclusionsKeepTheApp() throws {
+        let finder = try #require(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first)
+        let pip = SwitcherRow(app: finder, window: AXUIElementCreateSystemWide(), windowTitle: "Picture-in-Picture", isMinimized: false)
+        let filtered = CatalogFilter.filterExcludedWindowTitles([pip, pip], ["com.apple.finder": ["picture-in-picture"]])
+        #expect(filtered.count == 1)
+        #expect(filtered[0].window == nil)
+        #expect(filtered[0].pid == finder.processIdentifier)
+    }
+
+    @Test("config() reads title exclusions from their own key, cleaned and folded")
+    func windowTitleExclusionsConfig() {
+        let defaults = UserDefaults.standard
+        let key = Preferences.Keys.windowTitleExclusions
+        let saved = defaults.object(forKey: key)
+        defer {
+            if let saved { defaults.set(saved, forKey: key) } else { defaults.removeObject(forKey: key) }
+        }
+
+        defaults.set(["com.example.a": [" R\u{E9}sum\u{E9} ", "resume", ""], "com.example.b": ["  "]], forKey: key)
+        #expect(CatalogFilter.config().excludedTitleFragments == ["com.example.a": ["resume"]])
     }
 
     @Test("placeholders are always kept, even when hidden")
@@ -396,14 +447,42 @@ struct CatalogFilterTests {
 
     // MARK: - filterToAllowedSpaces (cached-wid path) + degrade
 
-    /// A window-bearing row for the current process carrying an explicit wid.
-    /// Only `cgWindowID` is read by the Space filters; `window` can be nil.
-    private func spaceRow(_ wid: CGWindowID) -> SwitcherRow {
-        SwitcherRow(app: .current, window: nil, windowTitle: "", isMinimized: false, cgWindowID: wid)
+    /// A window-bearing row for the current process carrying an explicit wid; `window` can be nil.
+    private func spaceRow(_ wid: CGWindowID, minimized: Bool = false, tabSibling: Bool = false) -> SwitcherRow {
+        SwitcherRow(app: .current, window: nil, windowTitle: "", isMinimized: minimized, cgWindowID: wid, isTabSibling: tabSibling)
     }
 
-    private func resolution(spaceByWindow: [CGWindowID: UInt64], allowedSpaces: Set<UInt64>) -> CatalogFilter.SpaceResolution {
-        CatalogFilter.SpaceResolution(spaceByWindow: spaceByWindow, confirmedSpaceless: [], onScreen: [], allowedSpaces: allowedSpaces)
+    private func resolution(
+        spaceByWindow: [CGWindowID: UInt64],
+        spaceless: Set<CGWindowID> = [],
+        allowedSpaces: Set<UInt64>
+    ) -> CatalogFilter.SpaceResolution {
+        CatalogFilter.SpaceResolution(spaceByWindow: spaceByWindow, confirmedSpaceless: spaceless, onScreen: [], allowedSpaces: allowedSpaces)
+    }
+
+    // 10 is the front tab on another Space, 50 is on the current Space, 20-40 are spaceless.
+    @Test("narrowed scope drops a spaceless background tab, keeps minimized and expanded-tab rows")
+    func narrowedScopeDropsSpacelessTab() {
+        let rows = [spaceRow(10), spaceRow(20), spaceRow(30, tabSibling: true), spaceRow(40, minimized: true), spaceRow(50)]
+        let spaces = resolution(spaceByWindow: [10: 200, 50: 100], spaceless: [20, 30, 40], allowedSpaces: [100])
+        let kept = CatalogFilter.filterToAllowedSpaces(rows, spaces, stageManager: false)
+        #expect(kept.map(\.cgWindowID) == [30, 40, 50])
+    }
+
+    @Test("Stage Manager keeps spaceless off-stage windows under a narrowed scope (#116)")
+    func stageManagerKeepsSpacelessRows() {
+        let rows = [spaceRow(10), spaceRow(20)]
+        let spaces = resolution(spaceByWindow: [10: 100], spaceless: [20], allowedSpaces: [100])
+        let kept = CatalogFilter.filterToAllowedSpaces(rows, spaces, stageManager: true)
+        #expect(kept.map(\.cgWindowID) == [10, 20])
+    }
+
+    @Test("an app whose only windows are spaceless keeps them")
+    func spacelessOnlyAppKept() {
+        let rows = [spaceRow(20)]
+        let spaces = resolution(spaceByWindow: [99: 100], spaceless: [20], allowedSpaces: [100])
+        let kept = CatalogFilter.filterToAllowedSpaces(rows, spaces, stageManager: false)
+        #expect(kept.map(\.cgWindowID) == [20])
     }
 
     @Test("current-Space filter drops a window on another Space, keeps active-Space")

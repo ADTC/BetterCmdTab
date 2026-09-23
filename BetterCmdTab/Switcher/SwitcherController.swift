@@ -1977,7 +1977,7 @@ final class SwitcherController: SwitcherViewDelegate {
                 if newValue == .idle {
                     secureInputMonitor.stop()
                 } else {
-                    Activator.invalidatePendingActivation()
+                    Activator.beginActivation()
                     secureInputMonitor.start()
                     cache.retryFailedAXObservers()
                 }
@@ -4267,10 +4267,7 @@ final class SwitcherController: SwitcherViewDelegate {
             let tabIndex = bt.index
             let parentTitle = bt.parentTitle
             return {
-                Activator.invalidatePendingActivation()
-                DispatchQueue.global(qos: .userInitiated).async {
-                    _ = BrowserTabs.activateTab(at: tabIndex, in: app, window: window, title: parentTitle)
-                }
+                BrowserTabs.commitTab(at: tabIndex, in: app, window: window, title: parentTitle)
                 completion()
             }
         }
@@ -4463,11 +4460,7 @@ final class SwitcherController: SwitcherViewDelegate {
             return
         }
         previousFrontmostApp = nil
-        if #available(macOS 14.0, *) {
-            _ = app.activate(from: .current, options: [])
-        } else {
-            app.activate(options: [.activateIgnoringOtherApps])
-        }
+        Activator.activateProcess(app)
     }
 
     private var visibleActionTarget: SwitcherRow? {
@@ -4965,11 +4958,7 @@ final class SwitcherController: SwitcherViewDelegate {
         // afterwards can lose focus back to the WindowServer.
         switch backend {
         case .appleScript:
-            let title = row.windowTitle
-            Activator.invalidatePendingActivation()
-            DispatchQueue.global(qos: .userInitiated).async {
-                _ = BrowserTabs.activateTab(at: chosen, in: app, window: window, title: title)
-            }
+            BrowserTabs.commitTab(at: chosen, in: app, window: window, title: row.windowTitle)
             finishDismiss()
         case .accessibility:
             if let tab = targetElement {

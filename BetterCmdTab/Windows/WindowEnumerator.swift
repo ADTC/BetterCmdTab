@@ -593,10 +593,13 @@ enum WindowEnumerator {
     /// tab-sibling tolerance and stays well under any deliberate window offset.
     static let tabFrameTolerance: CGFloat = 50
 
-    /// Whether `frame` is close enough to `front` to be the same tab stack:
-    /// identical rounded size, origin within `tabFrameTolerance` on both axes.
+    /// Ghostty on macOS 27 left a background tab 1pt shorter than its front
+    /// tab (1875x1177 vs 1875x1178), which kept it as its own row.
+    static let tabSizeTolerance: CGFloat = 2
+
     static func isNearTabFrame(_ frame: CGRect, _ front: CGRect) -> Bool {
-        frame.size == front.size
+        abs(frame.width - front.width) <= tabSizeTolerance
+            && abs(frame.height - front.height) <= tabSizeTolerance
             && abs(frame.origin.x - front.origin.x) <= tabFrameTolerance
             && abs(frame.origin.y - front.origin.y) <= tabFrameTolerance
     }
@@ -638,7 +641,7 @@ enum WindowEnumerator {
     ///   background tabs surface on current macOS. Two real overlapping
     ///   windows are both AX-listed, so issue #10 stays safe. Or:
     /// - it is ordered out (`onscreen[i] == false`) *near* an ordered-in
-    ///   AX-listed front's frame (same size, origin within
+    ///   AX-listed front's frame (size within `tabSizeTolerance`, origin within
     ///   `tabFrameTolerance`) and WindowServer reports it *spaceless*. This
     ///   catches the shapes the exact rule misses (issue #81): apps that leave
     ///   a background tab's frame at its stale pre-merge cascade offset
