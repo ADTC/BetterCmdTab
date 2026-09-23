@@ -204,19 +204,6 @@ private enum CloseKeycode {
 enum Activator {
     private static let finderBundleID = "com.apple.finder"
 
-    enum ActivationRequestMode: Equatable {
-        /// BetterCmdTab currently owns app activation (the visible panel path),
-        /// so hand it to the selected app using macOS's coordinated protocol.
-        case coordinated
-        /// A quick commit can happen before BetterCmdTab becomes active. It
-        /// cannot yield activation it does not own, so use a standalone request.
-        case standalone
-    }
-
-    static func activationRequestMode(currentApplicationIsActive: Bool) -> ActivationRequestMode {
-        currentApplicationIsActive ? .coordinated : .standalone
-    }
-
     /// The app that was frontmost when `hideAllApps()` last ran, so `showAllApps()`
     /// can raise it back on top (the window the user hid everything from). Pid for
     /// the same-session fast path, bundleID as a fallback if the app was relaunched.
@@ -255,11 +242,8 @@ enum Activator {
             return
         }
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
-        _ = beginActivation()
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-        config.createsNewApplicationInstance = false
-        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, _ in }
+        beginActivation()
+        openActivating(url, bundleID: bundleID)
     }
 
     @MainActor
@@ -273,7 +257,7 @@ enum Activator {
         }
         let pid = app.processIdentifier
         activationQueue.async {
-            guard activationGeneration.withLock({ $0 == gen }) else {
+            guard isCurrentActivation(gen) else {
                 DispatchQueue.main.async { completion() }
                 return
             }
@@ -295,7 +279,7 @@ enum Activator {
                     break
                 }
             }
-            guard activationGeneration.withLock({ $0 == gen }) else {
+            guard isCurrentActivation(gen) else {
                 DispatchQueue.main.async { completion() }
                 return
             }
@@ -304,7 +288,7 @@ enum Activator {
             }
             let hasWindows = !windows.isEmpty
             DispatchQueue.main.async {
-                guard activationGeneration.withLock({ $0 == gen }) else {
+                guard isCurrentActivation(gen) else {
                     completion()
                     return
                 }
@@ -349,11 +333,8 @@ enum Activator {
     /// Launch a not-yet-running app discovered by `InstalledAppsIndex`.
     @MainActor
     private static func launch(_ installed: InstalledApp) {
-        _ = beginActivation()
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-        config.createsNewApplicationInstance = false
-        NSWorkspace.shared.openApplication(at: installed.url, configuration: config) { _, _ in }
+        beginActivation()
+        openActivating(installed.url, bundleID: installed.bundleID)
     }
 
     /// Reopen a recently closed (i.e. quit) app: relaunch it, or activate it if
@@ -370,11 +351,9 @@ enum Activator {
             activateApp(running, completion: completion)
             return
         }
-        _ = beginActivation()
+        beginActivation()
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: entry.bundleID) {
-            let config = NSWorkspace.OpenConfiguration()
-            config.activates = true
-            NSWorkspace.shared.openApplication(at: url, configuration: config) { _, _ in }
+            openActivating(url, bundleID: entry.bundleID)
         }
         completion()
     }
@@ -395,15 +374,16 @@ enum Activator {
         qos: .userInitiated
     )
 
-    private static func beginActivation() -> UInt64 {
+    @discardableResult
+    static func beginActivation() -> UInt64 {
         activationGeneration.withLock { value in
             value &+= 1
             return value
         }
     }
 
-    static func invalidatePendingActivation() {
-        _ = beginActivation()
+    static func isCurrentActivation(_ generation: UInt64) -> Bool {
+        activationGeneration.withLock { $0 == generation }
     }
 
     @MainActor
@@ -451,17 +431,17 @@ enum Activator {
 
         let applyFocus: @Sendable () -> Void = {
             defer { DispatchQueue.main.async { completion() } }
-            guard activationGeneration.withLock({ $0 == gen }) else { return }
+            guard isCurrentActivation(gen) else { return }
             AXUIElementSetMessagingTimeout(window, 0.2)
             if isMinimized {
                 AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
             }
-            guard activationGeneration.withLock({ $0 == gen }) else { return }
+            guard isCurrentActivation(gen) else { return }
             AXUIElementPerformAction(window, kAXRaiseAction as CFString)
             if wid != 0 && !postedSpaceSwitch {
                 PrivateAPI.raiseWindow(pid: pid, wid: wid)
             }
-            guard activationGeneration.withLock({ $0 == gen }) else { return }
+            guard isCurrentActivation(gen) else { return }
             AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
             AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
         }
@@ -475,10 +455,10 @@ enum Activator {
         // once activation has settled, but only while our target is still frontmost
         // so we never yank focus the user may have since moved elsewhere.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            guard activationGeneration.withLock({ $0 == gen }),
+            guard isCurrentActivation(gen),
                   NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
             let reassert: @Sendable () -> Void = {
-                guard activationGeneration.withLock({ $0 == gen }) else { return }
+                guard isCurrentActivation(gen) else { return }
                 AXUIElementPerformAction(window, kAXRaiseAction as CFString)
                 AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
                 AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
@@ -505,10 +485,10 @@ enum Activator {
             let sameElement = focused.map { CFEqual($0, window) } ?? false
             if focusSettled(targetWid: wid, focusedWid: focusedWid, sameElement: sameElement) { return }
             DispatchQueue.main.async {
-                guard activationGeneration.withLock({ $0 == generation }),
+                guard isCurrentActivation(generation),
                       NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
                 activationQueue.async {
-                    guard activationGeneration.withLock({ $0 == generation }) else { return }
+                    guard isCurrentActivation(generation) else { return }
                     AXUIElementPerformAction(window, kAXRaiseAction as CFString)
                     if wid != 0 { PrivateAPI.raiseWindow(pid: pid, wid: wid) }
                     AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
@@ -570,20 +550,20 @@ enum Activator {
         activateProcess(app)
         let apply: @Sendable () -> Void = {
             defer { DispatchQueue.main.async { completion() } }
-            guard activationGeneration.withLock({ $0 == gen }) else { return }
+            guard isCurrentActivation(gen) else { return }
             AXUIElementSetMessagingTimeout(window, 0.2)
             AXUIElementSetMessagingTimeout(tab, 0.2)
             if isMinimized {
                 AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
             }
-            guard activationGeneration.withLock({ $0 == gen }) else { return }
+            guard isCurrentActivation(gen) else { return }
             AXUIElementPerformAction(window, kAXRaiseAction as CFString)
             if wid != 0 && !postedSpaceSwitch {
                 PrivateAPI.raiseWindow(pid: pid, wid: wid)
             }
             AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
             AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-            guard activationGeneration.withLock({ $0 == gen }) else { return }
+            guard isCurrentActivation(gen) else { return }
             AXUIElementPerformAction(tab, kAXPressAction as CFString)
             AXUIElementSetAttributeValue(tab, kAXSelectedAttribute as CFString, kCFBooleanTrue)
         }
@@ -591,47 +571,40 @@ enum Activator {
     }
 
     @MainActor
-    private static func activateProcess(_ app: NSRunningApplication) {
-        if #available(macOS 14.0, *) {
-            switch activationRequestMode(currentApplicationIsActive: NSApp.isActive) {
-            case .coordinated:
-                // `activate(from:)` is cooperative: AppKit's contract requires
-                // the active source app to yield first. Without this handoff the
-                // request may be denied, while the later AX/WindowServer raise
-                // still makes the target look frontmost — leaving it unable to
-                // receive keyboard input until clicked (#180).
-                NSApp.yieldActivation(to: app)
-                if !app.activate(from: NSRunningApplication.current, options: []) {
-                    // The source may have deactivated between the check and the
-                    // request. Fall back to the source-independent API instead
-                    // of proceeding with only a visual window raise.
-                    _ = app.activate(options: [])
-                }
-            case .standalone:
-                // Fast tap-release commits can remain in `.primed`, before our
-                // nonactivating panel calls `NSApp.activate()`. Passing `.current`
-                // as the source in that state cannot form a valid handoff.
-                _ = app.activate(options: [])
-            }
-        } else {
+    static func activateProcess(_ app: NSRunningApplication) {
+        guard #available(macOS 14.0, *) else {
             app.activate(options: [.activateIgnoringOtherApps])
+            return
         }
+        // activate(from:) is denied unless the active source yields first; a denied
+        // request still lets the AX raise show the window, without key focus (#180).
+        if NSApp.isActive {
+            NSApp.yieldActivation(to: app)
+            if app.activate(from: .current, options: []) { return }
+        }
+        // Inactive source (primed commit, swipe) or a rejected coordinated request.
+        _ = app.activate(options: [])
     }
 
     @MainActor
     private static func bringToFront(_ app: NSRunningApplication) {
         if let url = app.bundleURL {
-            let cfg = NSWorkspace.OpenConfiguration()
-            cfg.activates = true
-            cfg.createsNewApplicationInstance = false
-            NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, _ in }
+            openActivating(url, bundleID: app.bundleIdentifier)
             return
         }
-        if #available(macOS 14.0, *) {
-            _ = app.activate(from: NSRunningApplication.current, options: [])
-        } else {
-            app.activate(options: [.activateIgnoringOtherApps])
+        activateProcess(app)
+    }
+
+    /// Launch-style activation is cooperative too on macOS 14+: without the yield the
+    /// app opens behind whatever held focus (#180).
+    @MainActor
+    private static func openActivating(_ url: URL, bundleID: String?) {
+        if #available(macOS 14.0, *), let bundleID {
+            NSApp.yieldActivation(toApplicationWithBundleIdentifier: bundleID)
         }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, _ in }
     }
 
     @MainActor
@@ -645,10 +618,7 @@ enum Activator {
             bringToFront(app)
             return
         }
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-        config.createsNewApplicationInstance = false
-        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, _ in }
+        openActivating(url, bundleID: app.bundleIdentifier)
     }
 
     private static func openNewFinderWindow() {
@@ -879,11 +849,7 @@ enum Activator {
         completion: @escaping @MainActor () -> Void
     ) {
         DispatchQueue.main.async {
-            if #available(macOS 14.0, *) {
-                _ = app.activate(from: NSRunningApplication.current, options: [])
-            } else {
-                app.activate(options: [.activateIgnoringOtherApps])
-            }
+            activateProcess(app)
             completion()
         }
     }
@@ -957,15 +923,12 @@ enum Activator {
         }
     }
 
+    @MainActor
     static func hideApp(_ row: SwitcherRow) {
         guard let app = row.app else { return }
         if app.isHidden {
             app.unhide()
-            if #available(macOS 14.0, *) {
-                _ = app.activate(from: NSRunningApplication.current, options: [])
-            } else {
-                app.activate(options: [.activateIgnoringOtherApps])
-            }
+            activateProcess(app)
         } else {
             app.hide()
         }
