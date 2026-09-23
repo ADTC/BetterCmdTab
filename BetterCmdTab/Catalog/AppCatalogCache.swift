@@ -393,9 +393,7 @@ final class AppCatalogCache {
         // windowless switcher panel is filtered out by WindowEnumerator
         // (non-standard AX subrole) and the accessory rule then drops self when
         // no Settings window is open.
-        let candidates = NSWorkspace.shared.runningApplications.filter { app in
-            app.activationPolicy == .regular || app.activationPolicy == .accessory
-        }
+        let candidates = NSWorkspace.shared.runningApplications.filter(canHaveSwitchableWindows)
         let count = candidates.count
         guard count > 0 else { return [:] }
 
@@ -430,6 +428,15 @@ final class AppCatalogCache {
             }
         }
         return dict
+    }
+
+    nonisolated private static func canHaveSwitchableWindows(_ app: NSRunningApplication) -> Bool {
+        switch app.activationPolicy {
+        case .regular: return true
+        // macOS 27 MenuBarAgent AX-lists its menu bar as an untitled AXDialog window.
+        case .accessory: return app.bundleIdentifier != "com.apple.MenuBarAgent"
+        default: return false
+        }
     }
 
     private func installWorkspaceObservers() {
@@ -468,7 +475,7 @@ final class AppCatalogCache {
         let launchObs = nc.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] note in
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
             let pid = app.processIdentifier
-            let canHaveWindows = app.activationPolicy == .regular || app.activationPolicy == .accessory
+            let canHaveWindows = Self.canHaveSwitchableWindows(app)
             MainActor.assumeIsolated {
                 if canHaveWindows {
                     self?.installAXObserver(forPid: pid)
@@ -488,7 +495,7 @@ final class AppCatalogCache {
     /// into a 3–4s lag spike.
     private func installAXObserversForAllApps() {
         let pids = NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular || $0.activationPolicy == .accessory }
+            .filter(Self.canHaveSwitchableWindows)
             .map(\.processIdentifier)
         for pid in pids {
             installAXObserver(forPid: pid)
@@ -701,7 +708,7 @@ final class AppCatalogCache {
                 continue
             }
             let policy = app.activationPolicy
-            guard policy == .regular || policy == .accessory else {
+            guard Self.canHaveSwitchableWindows(app) else {
                 entries.removeValue(forKey: pid)
                 pidCoverage.removeValue(forKey: pid)
                 pidWriteGeneration[pid] = gen
